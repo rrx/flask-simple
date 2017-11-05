@@ -50,7 +50,6 @@ class SDBSessionInterface(SessionInterface):
 
         store_id = self.key_prefix + sid
         document = self.domain.get_consistent(store_id)
-        print('open', document)
 
         expiration = None
         if document and len(document.get('expiration', '')) > 0:
@@ -65,10 +64,8 @@ class SDBSessionInterface(SessionInterface):
             try:
                 val = document['val']
                 data = self.serializer.loads(want_bytes(val))
-                print('data', data)
                 return self.session_class(data, sid=sid)
             except Exception as e:
-                print('asdf', e)
                 return self.session_class(sid=sid, permanent=self.permanent)
         return self.session_class(sid=sid, permanent=self.permanent)
 
@@ -98,7 +95,6 @@ class SDBSessionInterface(SessionInterface):
             'modified': datetime.now().isoformat()
         }
 
-        print('save', data)
         self.domain.update(store_id, data)
 
         if self.use_signer:
