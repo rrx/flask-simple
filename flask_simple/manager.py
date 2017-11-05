@@ -3,14 +3,15 @@
 
 from os import environ
 
-from boto.sdb import connect_to_region
-from boto.sdb.domain import Domain
+import boto3
+
 from flask import (
     _app_ctx_stack as stack,
 )
 
 from .errors import ConfigurationError
-
+from .domain import Domain
+from .sessions import SDBSessionInterface
 
 class Simple(object):
     """SimpleDB wrapper for Flask."""
@@ -35,13 +36,14 @@ class Simple(object):
         """
         self.init_settings()
         self.check_settings()
+        self.init_sessions()
+
+    def init_sessions(self):
+        self.app.session_interface = SDBSessionInterface(boto3.client('sdb'), "auth", "")
 
     def init_settings(self):
         """Initialize all of the extension settings."""
         self.app.config.setdefault('SIMPLE_DOMAINS', [])
-        self.app.config.setdefault('AWS_ACCESS_KEY_ID', environ.get('AWS_ACCESS_KEY_ID'))
-        self.app.config.setdefault('AWS_SECRET_ACCESS_KEY', environ.get('AWS_SECRET_ACCESS_KEY'))
-        self.app.config.setdefault('AWS_REGION', environ.get('AWS_REGION', self.DEFAULT_REGION))
 
     def check_settings(self):
         """
@@ -49,13 +51,11 @@ class Simple(object):
 
         We'll raise an error if something isn't configured properly.
 
+        If SIMPLE_DOMAINS isn't configured, just ignore
+
         :raises: ConfigurationError
         """
-        if not self.app.config['SIMPLE_DOMAINS']:
-            raise ConfigurationError('You must specify at least one SimpleDB domain to use.')
-
-        if not (self.app.config['AWS_ACCESS_KEY_ID'] and self.app.config['AWS_SECRET_ACCESS_KEY']):
-            raise ConfigurationError('You must specify your AWS credentials.')
+        pass
 
     @property
     def connection(self):
@@ -68,11 +68,7 @@ class Simple(object):
         ctx = stack.top
         if ctx is not None:
             if not hasattr(ctx, 'simple_connection'):
-                ctx.simple_connection = connect_to_region(
-                    self.app.config['AWS_REGION'],
-                    aws_access_key_id = self.app.config['AWS_ACCESS_KEY_ID'],
-                    aws_secret_access_key = self.app.config['AWS_SECRET_ACCESS_KEY'],
-                )
+                ctx.simple_connection = boto3.client('sdb')
 
             return ctx.simple_connection
 
@@ -88,11 +84,8 @@ class Simple(object):
         if ctx is not None:
             if not hasattr(ctx, 'simple_domains'):
                 ctx.simple_domains = {}
-                for domain in self.app.config['SIMPLE_DOMAINS']:
-                    ctx.simple_domains[domain] = Domain(
-                        connection = self.connection,
-                        name = domain,
-                    )
+                for domain in self.app.config.get('SIMPLE_DOMAINS', []):
+                    ctx.simple_domains[domain] = Domain(self.connection, domain)
 
                     if not hasattr(ctx, 'simple_domain_%s' % domain):
                         setattr(ctx, 'simple_domain_%s' % domain, ctx.simple_domains[domain])
@@ -113,6 +106,7 @@ class Simple(object):
         :returns: A Domain object if the table was found.
         :raises: AttributeError on error.
         """
+        print('attr', name)
         if name in self.domains:
             return self.domains[name]
 
@@ -124,8 +118,8 @@ class Simple(object):
 
         We'll error out if the domains can't be created for some reason.
         """
-        for name in self.app.config['SIMPLE_DOMAINS']:
-            self.connection.create_domain(name)
+        for name in self.app.config.get('SIMPLE_DOMAINS', []):
+            self.connection.create_domain(DomainName=name)
 
     def destroy_all(self):
         """
@@ -133,5 +127,5 @@ class Simple(object):
 
         We'll error out if the domains can't be destroyed for some reason.
         """
-        for name in self.app.config['SIMPLE_DOMAINS']:
-            self.connection.delete_domain(name)
+        for name in self.app.config.get('SIMPLE_DOMAINS', []):
+            self.connection.delete_domain(DomainName=name)

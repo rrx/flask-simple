@@ -1,4 +1,6 @@
 Flask>=0.10.1
 Sphinx==1.2.2
-boto>=2.29.1
 pytest==2.5.2
+boto3==1.4.7
+botocore==1.7.39
+Flask-Session==0.3.1
