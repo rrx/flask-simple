@@ -18,13 +18,15 @@ class Simple(object):
 
     DEFAULT_REGION = 'us-east-1'
 
-    def __init__(self, app=None):
+    def __init__(self, app=None, domains=None):
         """
         Initialize this extension.
 
         :param obj app: The Flask application (optional).
         """
         self.app = app
+        self.configured_domains = domains
+
         if app is not None:
             self.init_app(app)
 
@@ -39,7 +41,7 @@ class Simple(object):
         self.init_sessions()
 
     def init_sessions(self):
-        self.app.session_interface = SDBSessionInterface(boto3.client('sdb'), "auth", "")
+        self.app.session_interface = SDBSessionInterface(boto3.client('sdb'), "session", "")
 
     def init_settings(self):
         """Initialize all of the extension settings."""
@@ -74,6 +76,16 @@ class Simple(object):
 
     @property
     def domains(self):
+        ctx = stack.top
+        if ctx is not None:
+            if not hasattr(ctx, 'simple_domains'):
+                ctx.simple_domains = {}
+                for domain in self.configured_domains:
+                    ctx.simple_domains[domain] = Domain(self.connection, domain)
+            return ctx.simple_domains
+
+    @property
+    def domainsx(self):
         """
         Our SimpleDB domains.
 
@@ -84,7 +96,9 @@ class Simple(object):
         if ctx is not None:
             if not hasattr(ctx, 'simple_domains'):
                 ctx.simple_domains = {}
-                for domain in self.app.config.get('SIMPLE_DOMAINS', []):
+                domains = self.configured_domains or []
+                domains = domains + self.app.config.get('SIMPLE_DOMAINS', [])
+                for domain in domains:
                     ctx.simple_domains[domain] = Domain(self.connection, domain)
 
                     if not hasattr(ctx, 'simple_domain_%s' % domain):
@@ -106,7 +120,6 @@ class Simple(object):
         :returns: A Domain object if the table was found.
         :raises: AttributeError on error.
         """
-        print('attr', name)
         if name in self.domains:
             return self.domains[name]
 
